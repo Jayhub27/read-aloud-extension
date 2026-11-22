@@ -3,8 +3,11 @@
 
 const READ_MENU_ID = 'tts-read-aloud';
 const STOP_MENU_ID = 'tts-stop-reading';
-const DEFAULT_SETTINGS = { rate: 1, pitch: 1, voice: '' };
+const OFFSCREEN_URL = 'src/offscreen.html';
+const DEFAULT_SETTINGS = { rate: 1, pitch: 1, voice: '', engine: 'auto' };
 const BLOCKED_SCHEMES = /^(chrome|edge|about|devtools|view-source|chrome-extension|moz-extension|chrome-untrusted):/i;
+
+let offscreenCreating = null;
 
 function isReadableUrl(url) {
   if (!url) return true;
@@ -35,6 +38,56 @@ async function getSettings() {
     return Object.assign({}, DEFAULT_SETTINGS, stored.ttsSettings || {});
   } catch (err) {
     return Object.assign({}, DEFAULT_SETTINGS);
+  }
+}
+
+async function ensureOffscreenDocument() {
+  if (!chrome.offscreen) throw new Error('Offscreen documents are not available in this browser');
+
+  if (chrome.runtime.getContexts) {
+    const contexts = await chrome.runtime.getContexts({
+      contextTypes: ['OFFSCREEN_DOCUMENT'],
+      documentUrls: [chrome.runtime.getURL(OFFSCREEN_URL)],
+    });
+    if (contexts.length > 0) return;
+  }
+
+  if (!offscreenCreating) {
+    offscreenCreating = chrome.offscreen.createDocument({
+      url: OFFSCREEN_URL,
+      reasons: ['AUDIO_PLAYBACK'],
+      justification: 'Speak text with the bundled offline voice when system voices are unavailable.',
+    });
+    offscreenCreating.catch(function () { /* handled by the caller */ })
+      .finally(function () { offscreenCreating = null; });
+  }
+  await offscreenCreating;
+}
+
+async function offscreenRequest(message) {
+  await ensureOffscreenDocument();
+  const payload = Object.assign({
+    __tts: true,
+    target: 'offscreen',
+    relayed: true,
+  }, message);
+
+  try {
+    const response = await chrome.runtime.sendMessage(payload);
+    if (response !== undefined) return response;
+  } catch (err) {
+    /* The document may still be registering its listener. */
+  }
+
+  await new Promise(function (resolve) { setTimeout(resolve, 150); });
+  return chrome.runtime.sendMessage(payload);
+}
+
+async function getBundledStatus() {
+  try {
+    return await offscreenRequest({ type: 'bundled-status' });
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
   }
 }
 
@@ -97,8 +150,40 @@ chrome.commands.onCommand.addListener(async function (command) {
   }
 });
 
+// Relay content-script requests to the offscreen voice document, and play
+// completion events back to the tab that started the sentence.
+chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
+  if (!message || message.__tts !== true) return undefined;
+
+  if (message.target === 'offscreen' && message.relayed !== true) {
+    if (!sender.tab || sender.tab.id === undefined) return undefined;
+    offscreenRequest(Object.assign({}, message, { tabId: sender.tab.id }))
+      .then(sendResponse)
+      .catch(function (error) {
+        sendResponse({ ok: false, error: String(error && error.message ? error.message : error) });
+      });
+    return true;
+  }
+
+  if (message.target === 'background' && message.type === 'bundled-ended') {
+    if (typeof message.tabId === 'number') {
+      chrome.tabs.sendMessage(message.tabId, {
+        __tts: true,
+        type: 'bundled-ended',
+        fromBackground: true,
+        token: message.token,
+      }).catch(function () { /* tab closed or navigated */ });
+    }
+    return undefined;
+  }
+
+  return undefined;
+});
+
 // Exposed for the integration test harness; no messages or web pages reach it.
 globalThis.__ttsBackground = {
   runCommand: runCommand,
   getSettings: getSettings,
+  ensureOffscreenDocument: ensureOffscreenDocument,
+  getBundledStatus: getBundledStatus,
 };

@@ -339,6 +339,8 @@ test('Read Aloud extension reads, pauses, resumes and highlights', async (t) => 
     assert.equal(await popup.locator('#status-dot').getAttribute('class'), 'dot idle');
     const voices = await popup.locator('#voice option').allTextContents();
     assert.ok(voices.includes('Test Voice A (en-US)'), 'voice picker is populated from the page engine');
+    assert.equal(await popup.locator('#engine-active').textContent(), 'System', 'system voices are preferred when present');
+    assert.equal(await popup.inputValue('#engine'), 'auto');
     assert.deepEqual(pageErrors, []);
   });
 
@@ -480,7 +482,7 @@ test('Read Aloud extension reads, pauses, resumes and highlights', async (t) => 
       const result = await chrome.storage.local.get('ttsSettings');
       return result.ttsSettings;
     });
-    assert.deepEqual(stored, { rate: 1.6, pitch: 0.7, voice: 'Test Voice B' });
+    assert.deepEqual(stored, { rate: 1.6, pitch: 0.7, voice: 'Test Voice B', engine: 'auto' });
 
     await popup.reload();
     await popup.waitForFunction(() => document.querySelectorAll('#voice option').length > 1, { timeout: 10000 });
@@ -561,6 +563,176 @@ test('Read Aloud extension reads, pauses, resumes and highlights', async (t) => 
   });
 });
 
+test('bundled offline voice speaks when Chromium reports no system voices', async (t) => {
+  const { context, worker } = await launchWithExtension(t);
+  const extensionId = new URL(worker.url()).host;
+
+  const page = await context.newPage();
+  const popup = await context.newPage();
+  const pageErrors = [];
+  const externalRequests = [];
+  page.on('pageerror', (error) => pageErrors.push('page: ' + error.message));
+  popup.on('pageerror', (error) => pageErrors.push('popup: ' + error.message));
+  context.on('request', (request) => {
+    const requestUrl = request.url();
+    if (/^https?:/i.test(requestUrl) && !requestUrl.startsWith(fixtureUrl)) {
+      externalRequests.push(requestUrl);
+    }
+  });
+
+  await page.goto(fixtureUrl);
+  await page.waitForFunction(() => document.documentElement.dataset.ttsReady === '1');
+
+  const tabId = await worker.evaluate(async ({ url }) => {
+    const tabs = await chrome.tabs.query({});
+    const tab = tabs.find((candidate) => candidate.url === url) || tabs[0];
+    return tab && tab.id;
+  }, { url: fixtureUrl });
+
+  const snapshot = () => worker.evaluate(async ({ tabId }) => {
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'ISOLATED',
+      func: () => globalThis.__TTS_CONTENT__.snapshot(),
+    });
+    return result.result;
+  }, { tabId });
+
+  const bundledStatus = () => worker.evaluate(async () => globalThis.__ttsBackground.getBundledStatus());
+
+  const highlightText = () => page.evaluate(() => {
+    const registry = CSS.highlights.get('tts-extension-reading');
+    if (!registry) return null;
+    return Array.from(registry).map((range) => range.toString()).join('\n');
+  });
+
+  const selectText = (selector) => page.evaluate((sel) => {
+    const element = document.querySelector(sel);
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }, selector);
+
+  const sourceLabel = () => popup.locator('#source-label').textContent();
+
+  const systemVoiceCount = await page.evaluate(() => window.speechSynthesis.getVoices().length);
+  assert.equal(systemVoiceCount, 0, 'this run has no system voices, so auto mode must bundle');
+
+  await popup.setViewportSize({ width: 340, height: 620 });
+  await popup.goto(`${EXTENSION_ID_HEADER}${extensionId}/src/popup.html`);
+  await popup.waitForFunction(
+    () => document.getElementById('engine-active').textContent === 'Bundled',
+    { timeout: 15000 },
+  );
+  assert.equal(await popup.inputValue('#engine'), 'auto', 'auto remains the default preference');
+  assert.equal(await popup.locator('#voice option').first().textContent(), 'Bundled English (US)');
+
+  await selectText('#p1');
+  await popup.click('#play');
+  await waitFor(async () => (await sourceLabel()) === 'Reading selection', 'bundled reading to start');
+
+  const synthesis = await waitFor(async () => {
+    const status = await bundledStatus();
+    const stats = status && status.synthesis;
+    if (!status || !status.ok || !stats) return null;
+    return stats.bytes > 10000 && stats.peak > 0 && stats.duration > 1 ? status : null;
+  }, 'the bundled engine to synthesize audio', { timeout: 20000 });
+
+  assert.equal(synthesis.state, 'playing');
+  assert.equal(synthesis.contextState, 'running', 'Web Audio is running in the offscreen document');
+  assert.equal(synthesis.engine, 'bundled');
+  assert.ok(synthesis.synthesis.bytes > 10000, 'a real PCM buffer was produced');
+  assert.ok(synthesis.synthesis.peak > 1000, 'the PCM buffer is not silent');
+  assert.ok(
+    synthesis.synthesis.nonZeroSamples > synthesis.synthesis.samples * 0.1,
+    'most samples carry signal, not just a click',
+  );
+
+  const playing = await snapshot();
+  assert.equal(playing.engine, 'bundled');
+  assert.equal(playing.total, 3);
+  assert.equal(await highlightText(), playing.sentence);
+
+  await waitFor(
+    async () => (await highlightText()) === FIXTURE_SENTENCES.p1second,
+    'the highlighted sentence to advance with bundled audio',
+    { timeout: 15000 },
+  );
+
+  await popup.click('#pause');
+  await waitFor(async () => (await sourceLabel()).includes('paused'), 'bundled pause label');
+  const paused = await waitFor(async () => {
+    const status = await bundledStatus();
+    return status && status.state === 'paused' ? status : null;
+  }, 'bundled audio to pause');
+
+  const pausedSnapshot = await snapshot();
+  const pausedHighlight = await highlightText();
+  await page.waitForTimeout(1200);
+  const afterPause = await bundledStatus();
+  assert.equal(afterPause.state, 'paused');
+  assert.ok(Math.abs(afterPause.offset - paused.offset) < 0.05, 'audio offset is frozen while paused');
+  assert.equal((await snapshot()).index, pausedSnapshot.index, 'sentence index is frozen while paused');
+  assert.equal(await highlightText(), pausedHighlight, 'highlight is frozen while paused');
+
+  await popup.locator('body').screenshot({ path: path.join(DOCS_DIR, 'popup-bundled.png') });
+
+  await popup.click('#resume');
+  await waitFor(async () => (await sourceLabel()) === 'Reading selection', 'bundled resume label');
+  await waitFor(async () => (await bundledStatus()).state === 'playing', 'bundled audio to resume');
+
+  await waitFor(async () => {
+    const current = await snapshot();
+    return current.index > pausedSnapshot.index || (current.status === 'idle' && current.total > 0);
+  }, 'bundled playback to continue past the paused sentence', { timeout: 20000 });
+
+  const beforeStop = await snapshot();
+  if (beforeStop.status !== 'idle') {
+    await popup.click('#stop');
+  } else {
+    await worker.evaluate(async ({ tabId, url }) => {
+      await globalThis.__ttsBackground.runCommand('stop', { id: tabId, url });
+    }, { tabId, url: fixtureUrl });
+  }
+
+  await waitFor(async () => (await bundledStatus()).state === 'idle', 'bundled audio to stop');
+  assert.equal(await highlightText(), null);
+  assert.equal((await snapshot()).status, 'idle');
+  assert.deepEqual(pageErrors, []);
+  assert.deepEqual(externalRequests, [], 'bundled synthesis makes no external network requests');
+
+  const vendorFiles = [
+    'vendor/mespeak/mespeak.bundle.js',
+    'vendor/mespeak/mespeak_config.json',
+    'vendor/mespeak/voices/en/en-us.json',
+    'vendor/mespeak/LICENSE',
+    'vendor/mespeak/README.md',
+  ];
+  let vendorBytes = 0;
+  for (const file of vendorFiles) vendorBytes += (await fs.stat(path.join(ROOT, file))).size;
+  assert.ok(vendorBytes < 30 * 1024 * 1024, `bundled voice must stay under 30MB, got ${vendorBytes}`);
+
+  const result = {
+    checkedAt: new Date().toISOString(),
+    engine: 'bundled meSpeak/eSpeak (Web Audio, offscreen document)',
+    systemVoices: systemVoiceCount,
+    preference: 'auto',
+    resolved: synthesis.engine,
+    synthesis: synthesis.synthesis,
+    sampleRate: synthesis.sampleRate,
+    vendorBytes,
+    pauseOffset: paused.offset,
+    resumed: true,
+    stopped: true,
+    audible: false,
+    note: 'The bundled engine produced non-silent PCM and advanced real playback. No audio device was available to listen, so audibility is unverified.',
+  };
+  await fs.writeFile(path.join(RESULTS_DIR, 'bundled-voice.json'), JSON.stringify(result, null, 2) + '\n');
+  console.log('Bundled voice:', JSON.stringify(result, null, 2));
+});
+
 test('real Chromium speech engine starts, pauses, resumes and stops', async (t) => {
   const { context, worker } = await launchWithExtension(t, ['--enable-speech-dispatcher']);
   const extensionId = new URL(worker.url()).host;
@@ -602,8 +774,21 @@ test('real Chromium speech engine starts, pauses, resumes and stops', async (t) 
   });
 
   await popup.setViewportSize({ width: 340, height: 560 });
+  // Force the platform engine: this machine's speech-dispatcher can speak even
+  // though getVoices() reports no voices, which auto mode would treat as empty.
+  await worker.evaluate(async () => {
+    await chrome.storage.local.set({
+      ttsSettings: { rate: 1, pitch: 1, voice: '', engine: 'system' },
+    });
+  });
   await popup.goto(`${EXTENSION_ID_HEADER}${extensionId}/src/popup.html`);
   await popup.waitForFunction(() => /ready/i.test(document.getElementById('source-label').textContent), { timeout: 10000 });
+  await popup.waitForFunction(
+    () => document.getElementById('engine-active').textContent === 'System',
+    { timeout: 10000 },
+  );
+  assert.equal(await popup.locator('#engine-active').textContent(), 'System');
+  assert.equal(await popup.inputValue('#engine'), 'system');
 
   const voices = await page.evaluate(() => window.speechSynthesis.getVoices().length);
 

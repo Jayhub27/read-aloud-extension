@@ -1,14 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Read Aloud — Text to Speech",
-  "version": "1.0.0",
-  "description": "Read selected text or the whole page aloud with system voices. Pause, resume, change speed and pitch, and follow the highlighted sentence.",
-  "minimum_chrome_version": "105",
+  "version": "1.1.0",
+  "description": "Read selected text or the whole page aloud with system or bundled offline voices. Pause, resume, adjust speed and pitch, and follow the highlighted sentence.",
+  "minimum_chrome_version": "116",
   "permissions": [
     "storage",
     "scripting",
     "contextMenus",
-    "activeTab"
+    "activeTab",
+    "offscreen"
   ],
   "host_permissions": [
     "<all_urls>"

@@ -18,7 +18,7 @@
     'CANVAS', 'SVG', 'TEXTAREA', 'INPUT', 'SELECT', 'OPTION', 'OPTGROUP',
   ]);
 
-  const settings = { rate: 1, pitch: 1, voice: '' };
+  const settings = { rate: 1, pitch: 1, voice: '', engine: 'auto' };
 
   let status = 'idle'; // idle | playing | paused
   let index = -1;
@@ -29,7 +29,17 @@
   let currentUtterance = null;
   let startWatchdog = null;
   let lastBoundaryOffset = 0;
-  let pausedOffset = 0;
+  let pausedCharOffset = 0;
+
+  let activeEngine = null; // system | bundled, for the current reading
+  let detectedEngine = null;
+  let engineDetection = null;
+  let engineDetectionPreference = null;
+  let engineDetectionId = 0;
+  let bundledToken = 0;
+  let bundledUsed = false;
+  let bundledDuration = 0;
+  let pausedTimeOffset = 0;
 
   function getEngine() {
     if (globalThis.__TTS_ENGINE__) return globalThis.__TTS_ENGINE__;
@@ -54,6 +64,9 @@
     settings.rate = clamp(input.rate, 0.5, 2, settings.rate);
     settings.pitch = clamp(input.pitch, 0, 2, settings.pitch);
     if (typeof input.voice === 'string') settings.voice = input.voice;
+    if (input.engine === 'auto' || input.engine === 'system' || input.engine === 'bundled') {
+      settings.engine = input.engine;
+    }
   }
 
   function listVoices() {
@@ -64,16 +77,22 @@
     } catch (err) {
       voices = [];
     }
-    return voices
-      .filter(function (voice) { return voice && typeof voice.name === 'string'; })
-      .map(function (voice) {
-        return {
-          name: voice.name,
-          lang: voice.lang || '',
-          default: Boolean(voice.default),
-          localService: voice.localService !== false,
-        };
+    const result = [];
+    const seen = new Set();
+    for (const voice of voices) {
+      if (!voice || typeof voice.name !== 'string' || seen.has(voice.name)) continue;
+      seen.add(voice.name);
+      result.push({
+        name: voice.name,
+        lang: voice.lang || '',
+        default: Boolean(voice.default),
+        localService: voice.localService !== false,
       });
+      // Some Linux speech-dispatcher installs expose thousands of variants;
+      // a 300-entry picker is already more than anyone scrolls.
+      if (result.length >= 300) break;
+    }
+    return result;
   }
 
   function findVoice(name) {
@@ -87,6 +106,123 @@
     }
   }
 
+  function countVoices() {
+    const engine = getEngine();
+    try {
+      return engine && engine.getVoices ? (engine.getVoices() || []).length : 0;
+    } catch (err) {
+      return 0;
+    }
+  }
+
+  function waitForVoices(timeout) {
+    const engine = getEngine();
+    if (!engine || !engine.addEventListener) {
+      return new Promise(function (resolve) { setTimeout(resolve, Math.min(timeout, 250)); });
+    }
+    return new Promise(function (resolve) {
+      let finished = false;
+      let timer = null;
+      function finish() {
+        if (finished) return;
+        finished = true;
+        if (timer) clearTimeout(timer);
+        try { engine.removeEventListener('voiceschanged', finish); } catch (err) { /* no-op */ }
+        resolve();
+      }
+      timer = setTimeout(finish, timeout);
+      try {
+        engine.addEventListener('voiceschanged', finish);
+      } catch (err) {
+        finish();
+      }
+    });
+  }
+
+  function enginePreference() {
+    return settings.engine === 'system' || settings.engine === 'bundled' ? settings.engine : 'auto';
+  }
+
+  /**
+   * Pick the engine for the next reading.
+   * - auto: system voices when the browser reports any, otherwise bundled.
+   * - system / bundled: explicit user choice.
+   * Waits briefly for asynchronously reported system voices before falling back.
+   */
+  async function detectEngine(force) {
+    const preference = enginePreference();
+    if (force) {
+      detectedEngine = null;
+      engineDetection = null;
+      engineDetectionPreference = null;
+    }
+
+    if (detectedEngine && detectedEngine.preference === preference) {
+      const stale = preference === 'auto' &&
+        detectedEngine.type === 'bundled' &&
+        countVoices() > 0;
+      if (!stale) return detectedEngine;
+      detectedEngine = null;
+    }
+
+    if (engineDetection && engineDetectionPreference === preference) {
+      return engineDetection;
+    }
+
+    if (!engineDetection || engineDetectionPreference !== preference) {
+      const detectionId = ++engineDetectionId;
+      engineDetectionPreference = preference;
+      engineDetection = (async function () {
+        let voiceCount = countVoices();
+        if (preference !== 'bundled' && voiceCount === 0) {
+          await waitForVoices(700);
+          voiceCount = countVoices();
+        }
+
+        let type;
+        if (preference === 'bundled') type = 'bundled';
+        else if (preference === 'system') type = 'system';
+        else type = voiceCount > 0 ? 'system' : 'bundled';
+
+        const info = {
+          type: type,
+          label: type === 'bundled' ? 'Bundled offline voice (eSpeak)' : 'System voices',
+          voiceCount: voiceCount,
+          preference: preference,
+        };
+        detectedEngine = info;
+        if (detectionId === engineDetectionId) {
+          engineDetection = null;
+          engineDetectionPreference = null;
+        }
+        return info;
+      })();
+    }
+
+    return engineDetection;
+  }
+
+  function sendOffscreen(message, timeout) {
+    const payload = Object.assign({ __tts: true, target: 'offscreen' }, message);
+    if (!timeout) return chrome.runtime.sendMessage(payload);
+
+    return new Promise(function (resolve, reject) {
+      const timer = setTimeout(function () {
+        reject(new Error('The bundled voice did not respond in time'));
+      }, timeout);
+      chrome.runtime.sendMessage(payload).then(
+        function (value) {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        function (err) {
+          clearTimeout(timer);
+          reject(err);
+        },
+      );
+    });
+  }
+
   function setStatus(next) {
     status = next;
     document.documentElement.dataset.ttsStatus = next;
@@ -94,6 +230,7 @@
 
   function snapshot() {
     const current = index >= 0 && index < sentences.length ? sentences[index] : null;
+    const engineType = activeEngine || (detectedEngine ? detectedEngine.type : null);
     return {
       ok: true,
       status: status,
@@ -102,6 +239,12 @@
       source: source,
       sentence: current ? current.text : '',
       error: error,
+      duration: bundledDuration,
+      engine: engineType,
+      engineLabel: engineType === 'bundled'
+        ? 'Bundled offline voice'
+        : engineType === 'system' ? 'System voices' : '',
+      engineVoiceCount: detectedEngine ? detectedEngine.voiceCount : 0,
     };
   }
 
@@ -265,6 +408,11 @@
       clearTimeout(startWatchdog);
       startWatchdog = null;
     }
+    if (activeEngine === 'bundled' && bundledUsed) {
+      bundledToken += 1;
+      sendOffscreen({ type: 'bundled-stop' }).catch(function () { /* no doc */ });
+      bundledUsed = false;
+    }
     error = reason || 'Speech failed';
     setStatus('idle');
     index = -1;
@@ -279,14 +427,19 @@
     }
   }
 
-  function speakFrom(next, activeGeneration, startOffset) {
+  function finishReading() {
+    clearStartWatchdog();
+    setStatus('idle');
+    index = -1;
+    clearHighlight();
+    document.documentElement.dataset.ttsError = '';
+  }
+
+  function speakSystemFrom(next, activeGeneration, startOffset) {
     if (activeGeneration !== generation) return;
     clearStartWatchdog();
     if (next >= sentences.length) {
-      setStatus('idle');
-      index = -1;
-      clearHighlight();
-      document.documentElement.dataset.ttsError = '';
+      finishReading();
       return;
     }
 
@@ -299,7 +452,7 @@
     lastBoundaryOffset = offset;
 
     if (!spokenText.trim()) {
-      speakFrom(next + 1, activeGeneration, 0);
+      speakSystemFrom(next + 1, activeGeneration, 0);
       return;
     }
 
@@ -339,8 +492,8 @@
       clearStartWatchdog();
       if (activeGeneration !== generation) return;
       if (spokenIndex === index) {
-        pausedOffset = 0;
-        speakFrom(spokenIndex + 1, activeGeneration, 0);
+        pausedCharOffset = 0;
+        speakSystemFrom(spokenIndex + 1, activeGeneration, 0);
       }
     };
     utterance.onerror = function (event) {
@@ -378,19 +531,17 @@
     }
   }
 
-  function startReading(inputSettings) {
+  async function startReading(inputSettings) {
     applySettings(inputSettings);
-
-    const engine = getEngine();
-    if (!engine) {
-      fail('Speech synthesis is not available in this browser.');
-      return snapshot();
-    }
 
     generation += 1;
     const activeGeneration = generation;
     clearStartWatchdog();
-    try { engine.cancel(); } catch (err) { /* no-op */ }
+
+    const systemEngine = getEngine();
+    if (systemEngine) {
+      try { systemEngine.cancel(); } catch (err) { /* no-op */ }
+    }
     const previous = currentUtterance;
     currentUtterance = null;
     if (previous) {
@@ -400,11 +551,25 @@
       previous.onboundary = null;
     }
 
+    if (bundledUsed) {
+      bundledToken += 1;
+      sendOffscreen({ type: 'bundled-stop' }).catch(function () { /* no doc */ });
+    }
+    bundledUsed = false;
+    bundledDuration = 0;
+    pausedTimeOffset = 0;
+    activeEngine = null;
+
     clearHighlight();
     error = '';
-    pausedOffset = 0;
+    pausedCharOffset = 0;
     lastBoundaryOffset = 0;
     document.documentElement.dataset.ttsError = '';
+
+    // Taking a beat here lets Chrome report system voices that load
+    // asynchronously; with none, the bundled voice is chosen.
+    const engineInfo = await detectEngine();
+    if (activeGeneration !== generation) return snapshot();
 
     const collected = collectText();
     source = collected.source;
@@ -439,34 +604,100 @@
       return snapshot();
     }
 
+    activeEngine = engineInfo.type;
     index = -1;
     setStatus('playing');
-    speakFrom(0, activeGeneration);
+
+    if (activeEngine === 'bundled') {
+      speakBundledFrom(0, activeGeneration, 0);
+    } else if (!getEngine()) {
+      fail('Speech synthesis is not available in this browser.');
+    } else {
+      speakSystemFrom(0, activeGeneration, 0);
+    }
     return snapshot();
   }
 
-  function pauseReading() {
+  async function speakBundledFrom(next, activeGeneration, startAt) {
+    if (activeGeneration !== generation) return;
+    clearStartWatchdog();
+    if (next >= sentences.length) {
+      finishReading();
+      return;
+    }
+
+    index = next;
+    const item = sentences[next];
+    applyHighlight(item.range);
+    setStatus('playing');
+
+    bundledUsed = true;
+    bundledToken += 1;
+    const token = bundledToken;
+    bundledDuration = 0;
+
+    try {
+      const response = await sendOffscreen({
+        type: 'bundled-speak',
+        text: item.text,
+        rate: settings.rate,
+        pitch: settings.pitch,
+        startAt: startAt || 0,
+        token: token,
+      }, 9000);
+
+      if (activeGeneration !== generation) return;
+
+      if (!response || !response.ok) {
+        fail(response && response.error ? response.error : 'The bundled voice failed to start.');
+        return;
+      }
+
+      bundledDuration = response.duration || 0;
+      if (typeof response.offset === 'number') pausedTimeOffset = response.offset;
+      setStatus('playing');
+    } catch (err) {
+      if (activeGeneration !== generation) return;
+      fail('The bundled voice is unavailable: ' + (err && err.message ? err.message : err));
+    }
+  }
+
+  async function pauseReading() {
     if (status !== 'playing') return snapshot();
 
-    // Chrome's speechSynthesis.pause() is unreliable for system voices (it is
-    // a no-op with speech-dispatcher on Linux), so stop the utterance and
-    // remember where we were. Resume re-speaks the rest of the sentence.
-    const item = index >= 0 && index < sentences.length ? sentences[index] : null;
-    pausedOffset = item ? Math.max(0, Math.min(lastBoundaryOffset, item.text.length)) : 0;
-
+    const engineType = activeEngine;
     generation += 1;
     clearStartWatchdog();
-    const engine = getEngine();
-    if (engine) {
-      try { engine.cancel(); } catch (err) { /* no-op */ }
+
+    if (engineType === 'bundled') {
+      bundledToken += 1;
+      pausedTimeOffset = 0;
+      setStatus('paused');
+      try {
+        const response = await sendOffscreen({ type: 'bundled-pause' }, 4000);
+        if (response && typeof response.offset === 'number') pausedTimeOffset = response.offset;
+      } catch (err) {
+        /* fall back to restarting the sentence */
+      }
+    } else {
+      // Chrome's speechSynthesis.pause() is unreliable for system voices (it
+      // is a no-op with speech-dispatcher on Linux), so stop the utterance and
+      // remember the last word boundary. Resume re-speaks from there.
+      const item = index >= 0 && index < sentences.length ? sentences[index] : null;
+      pausedCharOffset = item ? Math.max(0, Math.min(lastBoundaryOffset, item.text.length)) : 0;
+      const engine = getEngine();
+      if (engine) {
+        try { engine.cancel(); } catch (err) { /* no-op */ }
+      }
+      currentUtterance = null;
+      setStatus('paused');
     }
-    currentUtterance = null;
-    setStatus('paused');
+
     document.documentElement.dataset.ttsError = '';
     return snapshot();
   }
 
-  function resumeReading() {
+  async function resumeReading() {
     if (status !== 'paused') return snapshot();
     if (index < 0 || index >= sentences.length) {
       setStatus('idle');
@@ -475,25 +706,42 @@
 
     generation += 1;
     const activeGeneration = generation;
-    const offset = pausedOffset;
-    pausedOffset = 0;
     setStatus('playing');
-    speakFrom(index, activeGeneration, offset);
+
+    if (activeEngine === 'bundled') {
+      const offset = pausedTimeOffset;
+      pausedTimeOffset = 0;
+      await speakBundledFrom(index, activeGeneration, offset);
+    } else {
+      const offset = pausedCharOffset;
+      pausedCharOffset = 0;
+      speakSystemFrom(index, activeGeneration, offset);
+    }
     return snapshot();
   }
 
   function stopReading() {
     generation += 1;
+    bundledToken += 1;
     clearStartWatchdog();
+
     const engine = getEngine();
     if (engine) {
       try { engine.cancel(); } catch (err) { /* no-op */ }
     }
+    if (bundledUsed) {
+      sendOffscreen({ type: 'bundled-stop' }).catch(function () { /* no doc */ });
+    }
+
+    bundledUsed = false;
+    bundledDuration = 0;
+    pausedTimeOffset = 0;
+    activeEngine = null;
     currentUtterance = null;
     sentences = [];
     index = -1;
     error = '';
-    pausedOffset = 0;
+    pausedCharOffset = 0;
     lastBoundaryOffset = 0;
     source = null;
     clearHighlight();
@@ -502,10 +750,22 @@
     return snapshot();
   }
 
+  function handleBundledEnded(message) {
+    if (message.token !== bundledToken) return;
+    if (activeEngine !== 'bundled' || status !== 'playing') return;
+    speakBundledFrom(index + 1, generation, 0);
+  }
+
   function toggleReading(inputSettings) {
     if (status === 'playing') return pauseReading();
     if (status === 'paused') return resumeReading();
     return startReading(inputSettings);
+  }
+
+  function respondWith(promise, sendResponse) {
+    promise.then(sendResponse).catch(function (err) {
+      sendResponse({ ok: false, error: String(err && err.message ? err.message : err) });
+    });
   }
 
   /* ------------------------------------------------------------------ *
@@ -515,26 +775,36 @@
   chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
     if (!message || message.__tts !== true) return undefined;
     if (sender && sender.id && chrome.runtime.id && sender.id !== chrome.runtime.id) return undefined;
+    if (message.target === 'offscreen' || message.target === 'background') return undefined;
 
     switch (message.type) {
       case 'ping':
       case 'status':
         sendResponse(snapshot());
         return undefined;
+      case 'engine':
+        applySettings(message.settings);
+        respondWith(detectEngine().then(function (info) {
+          return { ok: true, engine: info };
+        }), sendResponse);
+        return true;
       case 'play':
-        sendResponse(startReading(message.settings));
-        return undefined;
+        respondWith(startReading(message.settings), sendResponse);
+        return true;
       case 'pause':
-        sendResponse(pauseReading());
-        return undefined;
+        respondWith(pauseReading(), sendResponse);
+        return true;
       case 'resume':
-        sendResponse(resumeReading());
-        return undefined;
+        respondWith(resumeReading(), sendResponse);
+        return true;
       case 'stop':
         sendResponse(stopReading());
         return undefined;
       case 'toggle':
-        sendResponse(toggleReading(message.settings));
+        respondWith(toggleReading(message.settings), sendResponse);
+        return true;
+      case 'bundled-ended':
+        if (message.fromBackground) handleBundledEnded(message);
         return undefined;
       case 'settings':
         applySettings(message.settings);

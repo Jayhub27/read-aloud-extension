@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const DEFAULT_SETTINGS = { rate: 1, pitch: 1, voice: '' };
+  const DEFAULT_SETTINGS = { rate: 1, pitch: 1, voice: '', engine: 'auto' };
   const RESTRICTED_SCHEMES = /^(chrome|edge|about|devtools|view-source|chrome-extension|moz-extension):/i;
 
   const elements = {
@@ -13,6 +13,8 @@
     rate: document.getElementById('rate'),
     pitch: document.getElementById('pitch'),
     voice: document.getElementById('voice'),
+    engine: document.getElementById('engine'),
+    engineActive: document.getElementById('engine-active'),
     rateOut: document.getElementById('rate-out'),
     pitchOut: document.getElementById('pitch-out'),
     source: document.getElementById('source-label'),
@@ -30,6 +32,7 @@
   let pollBusy = false;
   let saveTimer = null;
   let voicesLoaded = false;
+  let currentEngine = null;
 
   function clamp(value, min, max, fallback) {
     const number = typeof value === 'number' ? value : parseFloat(value);
@@ -43,6 +46,7 @@
       rate: clamp(raw.rate, 0.5, 2, DEFAULT_SETTINGS.rate),
       pitch: clamp(raw.pitch, 0, 2, DEFAULT_SETTINGS.pitch),
       voice: typeof raw.voice === 'string' ? raw.voice : DEFAULT_SETTINGS.voice,
+      engine: raw.engine === 'system' || raw.engine === 'bundled' ? raw.engine : DEFAULT_SETTINGS.engine,
     };
   }
 
@@ -55,6 +59,7 @@
     }
     elements.rate.value = String(settings.rate);
     elements.pitch.value = String(settings.pitch);
+    elements.engine.value = settings.engine;
     updateOutputs();
   }
 
@@ -131,6 +136,20 @@
     elements.hint.textContent = 'Select text to read just that, or press Play for the whole page.';
   }
 
+  function renderEngine(info) {
+    currentEngine = info || null;
+    const type = info ? info.type : null;
+    elements.engineActive.textContent = type === 'bundled' ? 'Bundled' : type === 'system' ? 'System' : 'Unknown';
+    elements.engineActive.title = type === 'bundled'
+      ? 'Bundled offline voice (eSpeak); no system voices needed'
+      : type === 'system'
+        ? (info.voiceCount ? info.voiceCount + ' system voices available' : 'System voice engine')
+        : 'Could not detect a voice engine';
+
+    const first = elements.voice.querySelector('option[value=""]');
+    if (first) first.textContent = type === 'bundled' ? 'Bundled English (US)' : 'System default';
+  }
+
   function renderVoices(voices) {
     const select = elements.voice;
     const previous = settings.voice;
@@ -138,7 +157,7 @@
 
     const fallback = document.createElement('option');
     fallback.value = '';
-    fallback.textContent = 'System default';
+    fallback.textContent = currentEngine && currentEngine.type === 'bundled' ? 'Bundled English (US)' : 'System default';
     select.appendChild(fallback);
 
     const seen = new Set();
@@ -172,7 +191,7 @@
     }
     if (!voices.length && typeof speechSynthesis !== 'undefined') {
       try {
-        voices = (speechSynthesis.getVoices() || []).map(function (voice) {
+        voices = (speechSynthesis.getVoices() || []).slice(0, 300).map(function (voice) {
           return { name: voice.name, lang: voice.lang, default: voice.default };
         });
       } catch (err) {
@@ -228,10 +247,23 @@
       elements.progressText.textContent = 'Nothing playing';
     }
 
+    if (status.engine) {
+      renderEngine({ type: status.engine, voiceCount: status.engineVoiceCount || 0 });
+    }
+
     if (status.error) {
       showError(status.error);
     } else {
       clearError();
+    }
+  }
+
+  async function loadEngine() {
+    try {
+      const response = await send({ type: 'engine', settings: settings });
+      if (response && response.engine) renderEngine(response.engine);
+    } catch (err) {
+      renderEngine(null);
     }
   }
 
@@ -260,6 +292,9 @@
       const response = await send(Object.assign({ type: type }, type === 'play' || type === 'toggle' ? { settings: settings } : {}));
       if (response) renderStatus(response);
       if (response && response.error) showError(response.error);
+      if (response && response.engine) {
+        renderEngine({ type: response.engine, voiceCount: response.engineVoiceCount || 0 });
+      }
       if (type === 'play' && response && !response.error && settings.voice && !voicesLoaded) {
         loadVoices();
       }
@@ -295,6 +330,14 @@
       send({ type: 'settings', settings: settings }).catch(function () {});
     });
 
+    elements.engine.addEventListener('change', function () {
+      settings.engine = elements.engine.value;
+      scheduleSave();
+      send({ type: 'settings', settings: settings })
+        .then(function () { return loadEngine(); })
+        .catch(function () {});
+    });
+
     document.addEventListener('keydown', function (event) {
       if (event.key === ' ' && event.target === document.body) {
         event.preventDefault();
@@ -315,6 +358,7 @@
     }
 
     await poll();
+    await loadEngine();
     await loadVoices();
     startPolling();
   }

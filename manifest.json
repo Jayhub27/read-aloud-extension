@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Read Aloud — Text to Speech",
   "version": "1.2.0",
-  "description": "Read selected text or the whole page aloud with system or bundled neural voices. Pause, resume, adjust speed and pitch, and follow the highlighted sentence.",
+  "description": "Read any page or selection aloud with system or bundled neural voices. Pause, resume, change speed, and follow the highlight.",
   "minimum_chrome_version": "116",
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"

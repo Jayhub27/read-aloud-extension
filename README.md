@@ -4,6 +4,15 @@ A Manifest V3 Chrome extension that reads the selected text, or the whole page, 
 browser's system voices and falls back to a bundled neural voice when the browser reports no
 system voices. No build step to load it, no external service, and no download at read time.
 
+## Download
+
+[Download the latest release](https://github.com/Jayhub27/read-aloud-extension/releases/latest),
+unzip it, and follow **Install unpacked** below. You can also clone the repository:
+
+```bash
+git clone https://github.com/Jayhub27/read-aloud-extension.git
+```
+
 ![Read Aloud popup with the bundled engine active](docs/popup-bundled.png)
 
 ![The spoken sentence highlighted on the page](docs/highlight.png)

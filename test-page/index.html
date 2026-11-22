@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Reading Room</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root {
+      --ink: #1f2937;
+      --muted: #6b7280;
+      --paper: #fbfaf7;
+      --line: #e7e2d8;
+      --accent: #b45309;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: Georgia, "Times New Roman", serif;
+      line-height: 1.7;
+    }
+    header {
+      padding: 56px 28px 26px;
+      text-align: center;
+      border-bottom: 1px solid var(--line);
+    }
+    header h1 {
+      margin: 0 0 8px;
+      font-size: 42px;
+      letter-spacing: -0.02em;
+    }
+    header p {
+      margin: 0;
+      color: var(--muted);
+      font-style: italic;
+      font-size: 15px;
+    }
+    main {
+      max-width: 700px;
+      margin: 0 auto;
+      padding: 34px 28px 70px;
+      font-size: 19px;
+    }
+    h2 {
+      font-size: 26px;
+      margin: 6px 0 18px;
+      letter-spacing: -0.01em;
+    }
+    p { margin: 0 0 22px; }
+    ul { margin: 0 0 24px; padding-left: 24px; }
+    li { margin-bottom: 10px; }
+    blockquote {
+      margin: 30px 0 0;
+      padding: 4px 0 4px 22px;
+      border-left: 3px solid var(--accent);
+      color: #4b5563;
+      font-style: italic;
+      font-size: 21px;
+    }
+    .tag {
+      display: inline-block;
+      margin-top: 30px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      background: #f3ede2;
+      color: var(--accent);
+      font: 600 12px/1.4 -apple-system, "Segoe UI", sans-serif;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    code {
+      font-family: ui-monospace, Menlo, monospace;
+      font-size: 0.88em;
+      background: #f1ede5;
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Reading Room</h1>
+    <p>A quiet page for testing text to speech.</p>
+  </header>
+
+  <main>
+    <article id="article">
+      <h2>Why spoken words matter</h2>
+
+      <p id="p1">The quick brown fox jumps over the lazy dog. Reading text aloud helps people focus on long documents. A good reader marks the sentence being spoken so the eye can follow along.</p>
+
+      <p id="p2">Chrome extensions can use the Web Speech API without a network request. The voice comes from the operating system, so the same page works offline. Pausing keeps the current sentence in place, and resuming continues from that exact spot.</p>
+
+      <ul id="list">
+        <li>Select any sentence to read only that part.</li>
+        <li>Press Ctrl+Shift+Y to start from the keyboard.</li>
+        <li>Right-click and choose Read aloud for the same result.</li>
+      </ul>
+
+      <blockquote id="quote">&ldquo;The limits of my language mean the limits of my world.&rdquo;</blockquote>
+
+      <span class="tag">Fixture page &middot; not a real article</span>
+    </article>
+  </main>
+</body>
+</html>

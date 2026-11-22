@@ -1,0 +1,10 @@
+/* Sentence highlight drawn with the CSS Custom Highlight API, so page markup
+   is never modified. Supported in Chromium 105+. */
+::highlight(tts-extension-reading) {
+  background-color: #fde68a;
+  color: #111827;
+  text-decoration: underline;
+  text-decoration-color: #d97706;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}

@@ -33,6 +33,7 @@
   let saveTimer = null;
   let voicesLoaded = false;
   let currentEngine = null;
+  let warmedUp = false;
 
   function clamp(value, min, max, fallback) {
     const number = typeof value === 'number' ? value : parseFloat(value);
@@ -136,18 +137,39 @@
     elements.hint.textContent = 'Select text to read just that, or press Play for the whole page.';
   }
 
+  /**
+   * Start loading the neural model while the user is still choosing
+   * settings, so the first Play does not wait for a multi-second model load.
+   * Only called when the bundled engine is actually going to be used.
+   */
+  function warmupBundledVoice() {
+    if (warmedUp) return;
+    warmedUp = true;
+    try {
+      chrome.runtime.sendMessage({
+        __tts: true,
+        target: 'background',
+        type: 'warmup',
+      }).catch(function () { /* the voice will load on first use */ });
+    } catch (err) {
+      /* older browsers return undefined instead of a promise */
+    }
+  }
+
   function renderEngine(info) {
     currentEngine = info || null;
     const type = info ? info.type : null;
     elements.engineActive.textContent = type === 'bundled' ? 'Bundled' : type === 'system' ? 'System' : 'Unknown';
     elements.engineActive.title = type === 'bundled'
-      ? 'Bundled offline voice (eSpeak); no system voices needed'
+      ? 'Bundled neural voice (Piper); no system voices needed'
       : type === 'system'
         ? (info.voiceCount ? info.voiceCount + ' system voices available' : 'System voice engine')
         : 'Could not detect a voice engine';
 
+    if (type === 'bundled') warmupBundledVoice();
+
     const first = elements.voice.querySelector('option[value=""]');
-    if (first) first.textContent = type === 'bundled' ? 'Bundled English (US)' : 'System default';
+    if (first) first.textContent = type === 'bundled' ? 'Piper English (US)' : 'System default';
   }
 
   function renderVoices(voices) {
@@ -157,7 +179,7 @@
 
     const fallback = document.createElement('option');
     fallback.value = '';
-    fallback.textContent = currentEngine && currentEngine.type === 'bundled' ? 'Bundled English (US)' : 'System default';
+    fallback.textContent = currentEngine && currentEngine.type === 'bundled' ? 'Piper English (US)' : 'System default';
     select.appendChild(fallback);
 
     const seen = new Set();

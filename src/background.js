@@ -56,7 +56,7 @@ async function ensureOffscreenDocument() {
     offscreenCreating = chrome.offscreen.createDocument({
       url: OFFSCREEN_URL,
       reasons: ['AUDIO_PLAYBACK'],
-      justification: 'Speak text with the bundled offline voice when system voices are unavailable.',
+      justification: 'Speak text with the bundled neural voice (Piper) when system voices are unavailable.',
     });
     offscreenCreating.catch(function () { /* handled by the caller */ })
       .finally(function () { offscreenCreating = null; });
@@ -86,6 +86,19 @@ async function offscreenRequest(message) {
 async function getBundledStatus() {
   try {
     return await offscreenRequest({ type: 'bundled-status' });
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+}
+
+/**
+ * Load the neural model before the first sentence is read. The popup calls
+ * this when it opens, so the multi-second model load happens while the user
+ * is still choosing settings.
+ */
+async function warmupBundledVoice() {
+  try {
+    return await offscreenRequest({ type: 'bundled-warmup' });
   } catch (err) {
     return { ok: false, error: String(err && err.message ? err.message : err) };
   }
@@ -165,6 +178,13 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
     return true;
   }
 
+  if (message.target === 'background' && message.type === 'warmup') {
+    warmupBundledVoice().then(sendResponse).catch(function (error) {
+      sendResponse({ ok: false, error: String(error && error.message ? error.message : error) });
+    });
+    return true;
+  }
+
   if (message.target === 'background' && message.type === 'bundled-ended') {
     if (typeof message.tabId === 'number') {
       chrome.tabs.sendMessage(message.tabId, {
@@ -186,4 +206,5 @@ globalThis.__ttsBackground = {
   getSettings: getSettings,
   ensureOffscreenDocument: ensureOffscreenDocument,
   getBundledStatus: getBundledStatus,
+  warmupBundledVoice: warmupBundledVoice,
 };

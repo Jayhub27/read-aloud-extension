@@ -186,7 +186,7 @@
 
         const info = {
           type: type,
-          label: type === 'bundled' ? 'Bundled offline voice (eSpeak)' : 'System voices',
+          label: type === 'bundled' ? 'Bundled neural voice (Piper)' : 'System voices',
           voiceCount: voiceCount,
           preference: preference,
         };
@@ -242,7 +242,7 @@
       duration: bundledDuration,
       engine: engineType,
       engineLabel: engineType === 'bundled'
-        ? 'Bundled offline voice'
+        ? 'Bundled neural voice'
         : engineType === 'system' ? 'System voices' : '',
       engineVoiceCount: detectedEngine ? detectedEngine.voiceCount : 0,
     };
@@ -618,6 +618,22 @@
     return snapshot();
   }
 
+  /**
+   * Ask the offscreen document to synthesize a sentence while another one is
+   * playing. Failures are silent: the next `bundled-speak` synthesizes on
+   * demand if the prefetch did not finish.
+   */
+  function prefetchBundled(next) {
+    if (next < 0 || next >= sentences.length) return;
+    const item = sentences[next];
+    sendOffscreen({
+      type: 'bundled-prepare',
+      text: item.text,
+      rate: settings.rate,
+      pitch: settings.pitch,
+    }, 20000).catch(function () { /* synthesized on demand instead */ });
+  }
+
   async function speakBundledFrom(next, activeGeneration, startAt) {
     if (activeGeneration !== generation) return;
     clearStartWatchdog();
@@ -644,7 +660,7 @@
         pitch: settings.pitch,
         startAt: startAt || 0,
         token: token,
-      }, 9000);
+      }, 30000);
 
       if (activeGeneration !== generation) return;
 
@@ -656,6 +672,10 @@
       bundledDuration = response.duration || 0;
       if (typeof response.offset === 'number') pausedTimeOffset = response.offset;
       setStatus('playing');
+
+      // Synthesize the next sentence while this one plays, so playback never
+      // waits for the neural model between sentences.
+      prefetchBundled(next + 1);
     } catch (err) {
       if (activeGeneration !== generation) return;
       fail('The bundled voice is unavailable: ' + (err && err.message ? err.message : err));

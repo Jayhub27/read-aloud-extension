@@ -1,8 +1,8 @@
 {
   "name": "read-aloud-extension",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "private": true,
-  "description": "Manifest V3 Chrome extension that reads selected text or the whole page aloud with system voices, falling back to a bundled offline voice.",
+  "description": "Manifest V3 Chrome extension that reads selected text or the whole page aloud with system voices, falling back to a bundled Piper neural voice.",
   "type": "module",
   "scripts": {
     "test": "npm run test:unit && npm run test:e2e",
@@ -11,8 +11,8 @@
     "build:vendor": "node scripts/build-vendor.mjs"
   },
   "devDependencies": {
-    "esbuild": "^0.28.2",
-    "mespeak": "^2.0.2",
+    "@diffusionstudio/piper-wasm": "^1.0.0",
+    "onnxruntime-web": "1.20.1",
     "playwright": "^1.65.1"
   },
   "license": "GPL-3.0"

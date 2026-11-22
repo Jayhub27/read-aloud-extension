@@ -563,7 +563,7 @@ test('Read Aloud extension reads, pauses, resumes and highlights', async (t) => 
   });
 });
 
-test('bundled offline voice speaks when Chromium reports no system voices', async (t) => {
+test('bundled neural voice speaks when Chromium reports no system voices', async (t) => {
   const { context, worker } = await launchWithExtension(t);
   const extensionId = new URL(worker.url()).host;
 
@@ -627,7 +627,7 @@ test('bundled offline voice speaks when Chromium reports no system voices', asyn
     { timeout: 15000 },
   );
   assert.equal(await popup.inputValue('#engine'), 'auto', 'auto remains the default preference');
-  assert.equal(await popup.locator('#voice option').first().textContent(), 'Bundled English (US)');
+  assert.equal(await popup.locator('#voice option').first().textContent(), 'Piper English (US)');
 
   await selectText('#p1');
   await popup.click('#play');
@@ -637,28 +637,42 @@ test('bundled offline voice speaks when Chromium reports no system voices', asyn
     const status = await bundledStatus();
     const stats = status && status.synthesis;
     if (!status || !status.ok || !stats) return null;
-    return stats.bytes > 10000 && stats.peak > 0 && stats.duration > 1 ? status : null;
-  }, 'the bundled engine to synthesize audio', { timeout: 20000 });
+    return stats.pcmSamples > 10000 && stats.peak > 0.05 && stats.duration > 1 ? status : null;
+  }, 'the bundled engine to synthesize audio', { timeout: 30000 });
 
   assert.equal(synthesis.state, 'playing');
   assert.equal(synthesis.contextState, 'running', 'Web Audio is running in the offscreen document');
   assert.equal(synthesis.engine, 'bundled');
-  assert.ok(synthesis.synthesis.bytes > 10000, 'a real PCM buffer was produced');
-  assert.ok(synthesis.synthesis.peak > 1000, 'the PCM buffer is not silent');
-  assert.ok(
-    synthesis.synthesis.nonZeroSamples > synthesis.synthesis.samples * 0.1,
-    'most samples carry signal, not just a click',
-  );
+  assert.ok(synthesis.synthesis.pcmSamples > 10000, 'a real PCM buffer was produced');
+  assert.ok(synthesis.synthesis.peak > 0.05, 'the PCM buffer is not silent');
+  assert.equal(synthesis.synthesis.sampleRate, 22050, 'the neural voice runs at 22.05 kHz');
+  assert.ok(synthesis.synthesis.phonemes > 20, 'the text was phonemized');
+  assert.ok(synthesis.synthesis.synthesizeMs > 0, 'synthesis took measurable time');
 
-  const playing = await snapshot();
+  const playing = await waitFor(async () => {
+    const content = await snapshot();
+    if (!content || content.status !== 'playing' || content.index < 0) return null;
+    const highlighted = await highlightText();
+    if (highlighted !== content.sentence) return null;
+    return content;
+  }, 'the highlight to match the sentence being spoken', { timeout: 30000 });
   assert.equal(playing.engine, 'bundled');
   assert.equal(playing.total, 3);
-  assert.equal(await highlightText(), playing.sentence);
 
   await waitFor(
     async () => (await highlightText()) === FIXTURE_SENTENCES.p1second,
     'the highlighted sentence to advance with bundled audio',
     { timeout: 15000 },
+  );
+
+  const advancedStatus = await waitFor(async () => {
+    const status = await bundledStatus();
+    const start = status && status.lastStart;
+    return start && start.at > synthesis.lastStart.at && start.prepared ? status : null;
+  }, 'the next sentence to start from the prefetched buffer', { timeout: 20000 });
+  assert.ok(
+    advancedStatus.lastStart.startLatencyMs < 250,
+    `a prefetched sentence should start immediately, took ${advancedStatus.lastStart.startLatencyMs}ms`,
   );
 
   await popup.click('#pause');
@@ -704,30 +718,34 @@ test('bundled offline voice speaks when Chromium reports no system voices', asyn
   assert.deepEqual(externalRequests, [], 'bundled synthesis makes no external network requests');
 
   const vendorFiles = [
-    'vendor/mespeak/mespeak.bundle.js',
-    'vendor/mespeak/mespeak_config.json',
-    'vendor/mespeak/voices/en/en-us.json',
-    'vendor/mespeak/LICENSE',
-    'vendor/mespeak/README.md',
+    'vendor/piper/piper_phonemize.js',
+    'vendor/piper/piper_phonemize.wasm',
+    'vendor/piper/piper_phonemize.data',
+    'vendor/piper/ort.min.mjs',
+    'vendor/piper/ort-wasm-simd-threaded.mjs',
+    'vendor/piper/ort-wasm-simd-threaded.wasm',
+    'vendor/piper/en_US-ljspeech-medium.onnx',
+    'vendor/piper/en_US-ljspeech-medium.onnx.json',
   ];
   let vendorBytes = 0;
   for (const file of vendorFiles) vendorBytes += (await fs.stat(path.join(ROOT, file))).size;
-  assert.ok(vendorBytes < 30 * 1024 * 1024, `bundled voice must stay under 30MB, got ${vendorBytes}`);
+  assert.ok(vendorBytes < 120 * 1024 * 1024, `bundled voice must stay under 120MB, got ${vendorBytes}`);
 
   const result = {
     checkedAt: new Date().toISOString(),
-    engine: 'bundled meSpeak/eSpeak (Web Audio, offscreen document)',
+    engine: 'bundled Piper neural voice (Web Audio, offscreen document)',
     systemVoices: systemVoiceCount,
     preference: 'auto',
     resolved: synthesis.engine,
     synthesis: synthesis.synthesis,
+    prefetch: advancedStatus.lastStart,
     sampleRate: synthesis.sampleRate,
     vendorBytes,
     pauseOffset: paused.offset,
     resumed: true,
     stopped: true,
     audible: false,
-    note: 'The bundled engine produced non-silent PCM and advanced real playback. No audio device was available to listen, so audibility is unverified.',
+    note: 'The bundled neural engine produced non-silent PCM and advanced real playback. No audio device was available to listen, so audibility is unverified.',
   };
   await fs.writeFile(path.join(RESULTS_DIR, 'bundled-voice.json'), JSON.stringify(result, null, 2) + '\n');
   console.log('Bundled voice:', JSON.stringify(result, null, 2));

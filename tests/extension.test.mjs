@@ -627,7 +627,7 @@ test('bundled neural voice speaks when Chromium reports no system voices', async
     { timeout: 15000 },
   );
   assert.equal(await popup.inputValue('#engine'), 'auto', 'auto remains the default preference');
-  assert.equal(await popup.locator('#voice option').first().textContent(), 'Piper English (US)');
+  assert.equal(await popup.locator('#voice option').first().textContent(), 'Kale · Simone');
 
   await selectText('#p1');
   await popup.click('#play');
@@ -645,8 +645,9 @@ test('bundled neural voice speaks when Chromium reports no system voices', async
   assert.equal(synthesis.engine, 'bundled');
   assert.ok(synthesis.synthesis.pcmSamples > 10000, 'a real PCM buffer was produced');
   assert.ok(synthesis.synthesis.peak > 0.05, 'the PCM buffer is not silent');
-  assert.equal(synthesis.synthesis.sampleRate, 22050, 'the neural voice runs at 22.05 kHz');
-  assert.ok(synthesis.synthesis.phonemes > 20, 'the text was phonemized');
+  assert.equal(synthesis.synthesis.sampleRate, 24000, 'the neural voice runs at 24 kHz');
+  assert.equal(synthesis.synthesis.voiceId, 'f06', 'the default Kale voice is selected');
+  assert.ok(synthesis.synthesis.pcmSamples > 10000, 'the neural voice produced PCM');
   assert.ok(synthesis.synthesis.synthesizeMs > 0, 'synthesis took measurable time');
 
   const playing = await waitFor(async () => {
@@ -718,24 +719,25 @@ test('bundled neural voice speaks when Chromium reports no system voices', async
   assert.deepEqual(externalRequests, [], 'bundled synthesis makes no external network requests');
 
   const vendorFiles = [
-    'vendor/piper/piper_phonemize.js',
-    'vendor/piper/piper_phonemize.wasm',
-    'vendor/piper/piper_phonemize.data',
-    'vendor/piper/ort.min.mjs',
-    'vendor/piper/ort-wasm-simd-threaded.mjs',
-    'vendor/piper/ort-wasm-simd-threaded.wasm',
-    'vendor/piper/en_US-ljspeech-medium.onnx',
-    'vendor/piper/en_US-ljspeech-medium.onnx.json',
+    'vendor/kale/js/kale-tts.mjs',
+    'vendor/kale/frontend/words/kaleTts.js',
+    'vendor/kale/frontend/words/g2p.bin',
+    'vendor/kale/frontend/words/lexicon.tsv',
+    'vendor/kale/ort/ort.wasm.min.mjs',
+    'vendor/kale/ort/ort-wasm-simd-threaded.mjs',
+    'vendor/kale/ort/ort-wasm-simd-threaded.wasm',
+    'vendor/kale/models/kale-tts-1-nano/kale-tts-1-nano.onnx',
+    'vendor/kale/models/kale-tts-1-nano/voices.json',
   ];
   let vendorBytes = 0;
   for (const file of vendorFiles) vendorBytes += (await fs.stat(path.join(ROOT, file))).size;
-  assert.ok(vendorBytes < 50 * 1024 * 1024, `bundled voice must stay under 50MB, got ${vendorBytes}`);
-  const modelBytes = (await fs.stat(path.join(ROOT, 'vendor/piper/en_US-ljspeech-medium.onnx'))).size;
-  assert.ok(modelBytes < 30 * 1024 * 1024, `quantized model must stay under 30MB, got ${modelBytes}`);
+  assert.ok(vendorBytes < 45 * 1024 * 1024, `bundled voice must stay under 45MB, got ${vendorBytes}`);
+  const modelBytes = (await fs.stat(path.join(ROOT, 'vendor/kale/models/kale-tts-1-nano/kale-tts-1-nano.onnx'))).size;
+  assert.ok(modelBytes < 20 * 1024 * 1024, `Kale model must stay under 20MB, got ${modelBytes}`);
 
   const result = {
     checkedAt: new Date().toISOString(),
-    engine: 'bundled Piper neural voice (Web Audio, offscreen document)',
+    engine: 'bundled Kale neural voice (Web Audio, offscreen document)',
     systemVoices: systemVoiceCount,
     preference: 'auto',
     resolved: synthesis.engine,

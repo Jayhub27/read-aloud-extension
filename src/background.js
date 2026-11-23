@@ -56,7 +56,7 @@ async function ensureOffscreenDocument() {
     offscreenCreating = chrome.offscreen.createDocument({
       url: OFFSCREEN_URL,
       reasons: ['AUDIO_PLAYBACK'],
-      justification: 'Speak text with the bundled neural voice (Piper) when system voices are unavailable.',
+      justification: 'Speak text with the bundled neural voice (Kale) when system voices are unavailable.',
     });
     offscreenCreating.catch(function () { /* handled by the caller */ })
       .finally(function () { offscreenCreating = null; });

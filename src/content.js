@@ -1,9 +1,9 @@
 /**
  * Read Aloud content script.
  *
- * Reads the current selection, or the whole page, using the Web Speech API
- * (system voices only, no network service). Speaks one sentence per utterance
- * so the CSS Custom Highlight API can follow the spoken sentence.
+ * Reads the current selection, or the whole page, with the Web Speech API or
+ * the bundled Kale neural voice (no network service). Speaks one sentence per
+ * utterance so the CSS Custom Highlight API can follow the spoken sentence.
  */
 (function () {
   'use strict';
@@ -13,6 +13,18 @@
 
   const HIGHLIGHT_NAME = 'tts-extension-reading';
   const MAX_UTTERANCE_LENGTH = 240;
+
+  // Bundled Kale voices exposed by the offscreen document.
+  const KALE_VOICES = [
+    { value: 'kale:f06', name: 'Kale · Simone' },
+    { value: 'kale:s057b', name: 'Kale · Kenzie' },
+    { value: 'kale:m3', name: 'Kale · Owen' },
+    { value: 'kale:w165', name: 'Kale · Frankie' },
+    { value: 'kale:w602', name: 'Kale · Darlene' },
+    { value: 'kale:t071', name: 'Kale · Toby' },
+    { value: 'kale:x328', name: 'Kale · Earl' },
+    { value: 'kale:h013f', name: 'Kale · Magnus' },
+  ];
   const SKIP_TAGS = new Set([
     'SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'IFRAME', 'OBJECT', 'EMBED',
     'CANVAS', 'SVG', 'TEXTAREA', 'INPUT', 'SELECT', 'OPTION', 'OPTGROUP',
@@ -186,7 +198,7 @@
 
         const info = {
           type: type,
-          label: type === 'bundled' ? 'Bundled neural voice (Piper)' : 'System voices',
+          label: type === 'bundled' ? 'Bundled neural voice (Kale)' : 'System voices',
           voiceCount: voiceCount,
           preference: preference,
         };
@@ -631,6 +643,7 @@
       text: item.text,
       rate: settings.rate,
       pitch: settings.pitch,
+      voice: settings.voice,
     }, 20000).catch(function () { /* synthesized on demand instead */ });
   }
 
@@ -658,6 +671,7 @@
         text: item.text,
         rate: settings.rate,
         pitch: settings.pitch,
+        voice: settings.voice,
         startAt: startAt || 0,
         token: token,
       }, 30000);
@@ -833,7 +847,7 @@
       case 'voices': {
         const immediate = listVoices();
         if (immediate.length) {
-          sendResponse({ ok: true, voices: immediate });
+          sendResponse({ ok: true, voices: immediate, bundledVoices: KALE_VOICES });
           return undefined;
         }
         const engine = getEngine();
@@ -846,7 +860,7 @@
           if (engine && engine.removeEventListener) {
             try { engine.removeEventListener('voiceschanged', finish); } catch (err) { /* no-op */ }
           }
-          sendResponse({ ok: true, voices: listVoices() });
+          sendResponse({ ok: true, voices: listVoices(), bundledVoices: KALE_VOICES });
         }
         if (engine && engine.addEventListener) {
           try { engine.addEventListener('voiceschanged', finish); } catch (err) { /* no-op */ }

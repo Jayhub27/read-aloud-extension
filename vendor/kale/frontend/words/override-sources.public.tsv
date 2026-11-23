@@ -1,0 +1,54 @@
+# Where each published-card name or word in override.public.tsv comes from: key<TAB>source<TAB>kind, no card text.
+# A person's name is listed only as a public figure, historical person or fictional character in a published Kale card;
+# anyone who cannot be placed stays out of the public list (17 Nov 2026, same rule as the computer's override-sources.tsv).
+amelia	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+antoni	encyclopedia register subject (apps/studio/lib/register/subjects.json)	public figure / historical / fictional character in a published card
+bartolomeo	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+christina	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+deditici	published card word (computer override-sources.tsv)	word, place, living thing or culture (not a person)
+elisha	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+elizabeth	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+frederic	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+hans	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+ida	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+ikko	published card word (computer override-sources.tsv)	public figure / historical / fictional character in a published card
+iwatani	published card word (computer override-sources.tsv)	public figure / historical / fictional character in a published card
+jurado	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+koseki	published card word (computer override-sources.tsv)	word, place, living thing or culture (not a person)
+louis	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+muhammad	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+othniel	published card word (computer override-sources.tsv)	public figure / historical / fictional character in a published card
+rodolphe	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+shmura	published card word (computer override-sources.tsv)	word, place, living thing or culture (not a person)
+socrates	encyclopedia register subject (apps/studio/lib/register/subjects.json)	public figure / historical / fictional character in a published card
+valentina	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+bach	encyclopedia register subject (apps/studio/lib/register/subjects.json)	public figure / historical / fictional character in a published card
+basho	encyclopedia register subject (apps/studio/lib/register/subjects.json)	public figure / historical / fictional character in a published card
+cassatt	encyclopedia register subject (apps/studio/lib/register/subjects.json)	public figure / historical / fictional character in a published card
+cleopatra	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+frida	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+gagarin	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+galilei	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+galileo	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+giotto	encyclopedia register subject (apps/studio/lib/register/subjects.json)	public figure / historical / fictional character in a published card
+greco	encyclopedia register subject (apps/studio/lib/register/subjects.json)	public figure / historical / fictional character in a published card
+hatshepsut	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+kahlo	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+khafre	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+menkaure	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+mozart	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+semmelweis	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+sneferu	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+tagore	encyclopedia register subject (apps/studio/lib/register/subjects.json)	public figure / historical / fictional character in a published card
+tarsila	encyclopedia register subject (apps/studio/lib/register/subjects.json)	public figure / historical / fictional character in a published card
+vinci	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+yousafzai	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+otzi	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+osiris	encyclopedia register subject (apps/studio/lib/register/subjects.json)	public figure / historical / fictional character in a published card
+artemis	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+callisto	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+charon	encyclopedia register subject (apps/studio/lib/register/subjects.json)	public figure / historical / fictional character in a published card
+nereus	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+mahan	published card word (card-words.txt)	public figure / historical / fictional character in a published card
+tutankhamun	published card word (computer override-sources.tsv)	public figure / historical / fictional character in a published card
+matisse	encyclopedia register subject (apps/studio/lib/register/subjects.json)	public figure / historical / fictional character in a published card

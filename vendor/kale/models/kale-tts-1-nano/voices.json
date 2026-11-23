@@ -1,0 +1,166 @@
+{
+  "graphs": {
+    "int8": "kale-tts-1-nano.onnx",
+    "fp32": "kale-tts-1-nano.fp32.onnx"
+  },
+  "layout": "voices/<id>.bin = style table float32 [510, 256], row = number of tokens - 1 -> input 'style' [1,256]; voices/<id>.extra.bin = float32, the inputs below concatenated in this order",
+  "phonemes": "kokoro-native",
+  "voice_inputs": [
+    {
+      "name": "voice_prosody",
+      "dims": [
+        1,
+        32
+      ]
+    },
+    {
+      "name": "voice_prosody_col",
+      "dims": [
+        1,
+        32,
+        1
+      ]
+    },
+    {
+      "name": "voice_sound",
+      "dims": [
+        1,
+        16
+      ]
+    },
+    {
+      "name": "voice_pitch_floor",
+      "dims": [
+        1,
+        1
+      ]
+    },
+    {
+      "name": "voice_clamp_tail",
+      "dims": [
+        1,
+        1
+      ]
+    },
+    {
+      "name": "voice_clamp_thr",
+      "dims": [
+        1,
+        1
+      ]
+    },
+    {
+      "name": "voice_unvoice_hz",
+      "dims": [
+        1,
+        1
+      ]
+    }
+  ],
+  "voices": [
+    {
+      "id": "s057b",
+      "name": "Kenzie",
+      "kokoro_id": "af_kenzie",
+      "order": 0,
+      "accent": "en-us",
+      "pitch_floor_hz": 141.4,
+      "description": "esports hype woman",
+      "label": "Kenzie · esports hype woman",
+      "clamp_tail_frames": 36.0,
+      "clamp_thr_hz": 50.0,
+      "unvoice_hz": 80.0
+    },
+    {
+      "id": "f06",
+      "name": "Simone",
+      "kokoro_id": "af_simone",
+      "order": 1,
+      "accent": "en-us",
+      "pitch_floor_hz": 116.6,
+      "description": "deep and confident woman",
+      "label": "Simone · deep and confident woman",
+      "clamp_tail_frames": 36.0,
+      "clamp_thr_hz": 50.0,
+      "unvoice_hz": 80.0
+    },
+    {
+      "id": "w165",
+      "name": "Frankie",
+      "kokoro_id": "af_frankie",
+      "order": 3,
+      "accent": "en-us",
+      "pitch_floor_hz": 104.7,
+      "description": "hard-boiled detective's partner",
+      "label": "Frankie · hard-boiled detective's partner",
+      "clamp_tail_frames": 36.0,
+      "clamp_thr_hz": 50.0,
+      "unvoice_hz": 80.0
+    },
+    {
+      "id": "w602",
+      "name": "Darlene",
+      "kokoro_id": "af_darlene",
+      "order": 4,
+      "accent": "en-us",
+      "pitch_floor_hz": 124.3,
+      "description": "rough low-voiced old trucker woman",
+      "label": "Darlene · rough low-voiced old trucker woman",
+      "clamp_tail_frames": 36.0,
+      "clamp_thr_hz": 50.0,
+      "unvoice_hz": 80.0
+    },
+    {
+      "id": "m3",
+      "name": "Owen",
+      "kokoro_id": "am_owen",
+      "order": 5,
+      "accent": "en-us",
+      "pitch_floor_hz": 87.7,
+      "description": "bright young host",
+      "label": "Owen · bright young host",
+      "clamp_tail_frames": 36.0,
+      "clamp_thr_hz": 50.0,
+      "unvoice_hz": 80.0
+    },
+    {
+      "id": "t071",
+      "name": "Toby",
+      "kokoro_id": "am_toby",
+      "order": 6,
+      "accent": "en-us",
+      "pitch_floor_hz": 0.0,
+      "description": "mischievous prankster",
+      "label": "Toby · mischievous prankster",
+      "clamp_tail_frames": 36.0,
+      "clamp_thr_hz": 50.0,
+      "unvoice_hz": 60.0
+    },
+    {
+      "id": "x328",
+      "name": "Earl",
+      "kokoro_id": "am_earl",
+      "order": 8,
+      "accent": "en-us",
+      "pitch_floor_hz": 0.0,
+      "description": "African American jazz granddad",
+      "label": "Earl · African American jazz granddad",
+      "clamp_tail_frames": 36.0,
+      "clamp_thr_hz": 50.0,
+      "unvoice_hz": 60.0
+    },
+    {
+      "id": "h013f",
+      "name": "Magnus",
+      "kokoro_id": "am_magnus",
+      "order": 9,
+      "accent": "en-us",
+      "pitch_floor_hz": 0.0,
+      "description": "deep dramatic trailer narrator",
+      "label": "Magnus · deep dramatic trailer narrator",
+      "clamp_tail_frames": 68.0,
+      "clamp_thr_hz": 1.0,
+      "unvoice_hz": 60.0
+    }
+  ]
+}

@@ -150,6 +150,7 @@
         __tts: true,
         target: 'background',
         type: 'warmup',
+        voice: settings.voice,
       }).catch(function () { /* the voice will load on first use */ });
     } catch (err) {
       /* older browsers return undefined instead of a promise */
@@ -161,25 +162,35 @@
     const type = info ? info.type : null;
     elements.engineActive.textContent = type === 'bundled' ? 'Bundled' : type === 'system' ? 'System' : 'Unknown';
     elements.engineActive.title = type === 'bundled'
-      ? 'Bundled neural voice (Piper); no system voices needed'
+      ? 'Bundled neural voice (Kale); no system voices needed'
       : type === 'system'
         ? (info.voiceCount ? info.voiceCount + ' system voices available' : 'System voice engine')
         : 'Could not detect a voice engine';
 
+    if (type === 'bundled' && !String(settings.voice || '').startsWith('kale:')) {
+      settings.voice = 'kale:f06';
+      elements.voice.value = settings.voice;
+      scheduleSave();
+    } else if (type === 'system' && String(settings.voice || '').startsWith('kale:')) {
+      settings.voice = '';
+      elements.voice.value = '';
+      scheduleSave();
+    }
+
     if (type === 'bundled') warmupBundledVoice();
 
     const first = elements.voice.querySelector('option[value=""]');
-    if (first) first.textContent = type === 'bundled' ? 'Piper English (US)' : 'System default';
+    if (first) first.textContent = type === 'bundled' ? 'Kale · Simone' : 'System default';
   }
 
-  function renderVoices(voices) {
+  function renderVoices(voices, bundledVoices) {
     const select = elements.voice;
     const previous = settings.voice;
     select.innerHTML = '';
 
     const fallback = document.createElement('option');
     fallback.value = '';
-    fallback.textContent = currentEngine && currentEngine.type === 'bundled' ? 'Piper English (US)' : 'System default';
+    fallback.textContent = currentEngine && currentEngine.type === 'bundled' ? 'Kale · Simone' : 'System default';
     select.appendChild(fallback);
 
     const seen = new Set();
@@ -192,7 +203,22 @@
       select.appendChild(option);
     });
 
-    if (previous && !seen.has(previous)) {
+    const known = new Set(seen);
+    if (bundledVoices && bundledVoices.length) {
+      const group = document.createElement('optgroup');
+      group.label = 'Kale neural voices';
+      bundledVoices.forEach(function (voice) {
+        if (!voice || !voice.value) return;
+        known.add(voice.value);
+        const option = document.createElement('option');
+        option.value = voice.value;
+        option.textContent = voice.name;
+        group.appendChild(option);
+      });
+      select.appendChild(group);
+    }
+
+    if (previous && !known.has(previous)) {
       const option = document.createElement('option');
       option.value = previous;
       option.textContent = previous + ' (not available now)';
@@ -205,9 +231,11 @@
 
   async function loadVoices() {
     let voices = [];
+    let bundled = [];
     try {
       const response = await send({ type: 'voices' });
       if (response && Array.isArray(response.voices)) voices = response.voices;
+      if (response && Array.isArray(response.bundledVoices)) bundled = response.bundledVoices;
     } catch (err) {
       voices = [];
     }
@@ -220,7 +248,7 @@
         voices = [];
       }
     }
-    renderVoices(voices);
+    renderVoices(voices, bundled);
   }
 
   function renderStatus(status) {

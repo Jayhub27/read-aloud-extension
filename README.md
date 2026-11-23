@@ -23,7 +23,7 @@ git clone https://github.com/Jayhub27/read-aloud-extension.git
 - Play, pause, resume and stop from the toolbar popup.
 - Speed (0.5×–2×), pitch (0–2), voice and engine pickers saved in `chrome.storage.local`.
 - **System voices by default.** When `speechSynthesis.getVoices()` is empty, it uses a bundled
-  Piper neural voice (LJSpeech, 22.05 kHz), which ships inside the extension (~90 MB of assets) and
+  Piper neural voice (LJSpeech, 22.05 kHz), which ships inside the extension (~36 MB of assets) and
   synthesizes locally with ONNX Runtime Web.
 - The popup shows which engine is active: **System** or **Bundled**, next to the engine picker.
 - Highlights the sentence being spoken without modifying the page markup.
@@ -109,19 +109,24 @@ it in the browser:
 
 | Piece | Size |
 | --- | --- |
-| Voice model (VITS, 22.05 kHz, public-domain LJSpeech) | 61 MB |
-| espeak-ng phonemizer (WASM + data) | 18 MB |
+| Voice model (int8 VITS, 22.05 kHz, public-domain LJSpeech) | 23 MB |
+| espeak-ng phonemizer (WASM + English-only data) | 1.4 MB |
 | ONNX Runtime Web (WASM backend) | 11 MB |
-| Glue JS (piper-wasm, ORT loader) | 0.6 MB |
+| Glue JS (piper-wasm, ORT loader) | 0.1 MB |
 
-Total shipped size is about **90 MB**. The popup never downloads anything; every file is fetched
+Total shipped size is about **36 MB**. The popup never downloads anything; every file is fetched
 from the extension package by the offscreen document. `npm run build:vendor` copies the runtime from
 npm; the model download is documented in `scripts/build-vendor.mjs`.
 
-Measured in headless Chromium on this machine, the voice synthesizes at about **4x real time**
-(0.7–1.5 seconds per sentence, 22.05 kHz output). That is fast enough to synthesize the next
+Measured in headless Chromium on this machine, the voice synthesizes at about **3.4x real time**
+(0.8–1.6 seconds per sentence, 22.05 kHz output). That is fast enough to synthesize the next
 sentence while the current one plays. The higher-quality `high` variant of the same voice measured
 0.5x real time, slower than playback, so the medium model is the one bundled.
+
+The model is int8-quantized with QDQ and per-channel scales: the text encoder, flow and duration
+predictor are int8, while the HiFi-GAN vocoder stays float32. That keeps the output spectrum within
+about 1 dB of the full-precision model at 62% of the footprint. The phonemizer ships only the seven
+English files it needs instead of all 494 language files, and produces byte-identical phonemes.
 
 Pitch is applied by synthesizing at a scaled `length_scale` and playing the result back at a
 matching `playbackRate`, which keeps the requested speed while shifting the voice. The slider's
@@ -216,7 +221,7 @@ that sound reached a speaker at a usable volume.
 - Reads the first selection range when several ranges are selected.
 - Cannot run on `chrome://` pages, the Chrome Web Store, or the built-in PDF viewer.
 - The bundled voice is a single US English neural voice (Piper LJSpeech). It sounds far better than
-  the old eSpeak fallback but adds about 90 MB to the extension.
+  the old eSpeak fallback but adds about 36 MB to the extension.
 - The first use of the bundled voice pays a one-time model load of about 2.5 seconds. Opening the
   popup warms it up; context-menu and shortcut starts cannot.
 - Pitch on the bundled voice is a resampling effect. It is clean near 1.0 and can sound artifacty at

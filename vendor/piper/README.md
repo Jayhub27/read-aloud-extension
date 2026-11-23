@@ -3,17 +3,42 @@
 This folder contains everything the extension needs to speak without a system
 voice, with no network access at read time:
 
-| File | Purpose |
-| --- | --- |
-| `en_US-ljspeech-medium.onnx` | Piper VITS voice model, 22,050 Hz, single speaker |
-| `en_US-ljspeech-medium.onnx.json` | Model configuration: phoneme map, sample rate, inference scales |
-| `piper_phonemize.js` / `.wasm` / `.data` | Emscripten build of piper-phonemize and espeak-ng |
-| `ort.min.mjs` | ONNX Runtime Web, ES module entry point |
-| `ort-wasm-simd-threaded.mjs` / `.wasm` | ONNX Runtime Web WASM backend |
+| File | Purpose | Size |
+| --- | --- | --- |
+| `en_US-ljspeech-medium.onnx` | Piper VITS voice model, 22,050 Hz, single speaker, int8-quantized | 23 MB |
+| `en_US-ljspeech-medium.onnx.json` | Model configuration: phoneme map, sample rate, inference scales | 5 KB |
+| `piper_phonemize.js` / `.wasm` / `.data` | Emscripten build of piper-phonemize and espeak-ng | 1.4 MB |
+| `ort.min.mjs` | ONNX Runtime Web, ES module entry point | 436 KB |
+| `ort-wasm-simd-threaded.mjs` / `.wasm` | ONNX Runtime Web WASM backend | 11 MB |
 
 Synthesis runs in the extension's offscreen document: text is phonemized with
 espeak-ng, the phoneme IDs go through the Piper model with ONNX Runtime Web,
 and the resulting 22.05 kHz PCM is played with Web Audio.
+
+## Size reductions
+
+Two changes cut the bundle from about 90 MB to about 36 MB:
+
+1. **English-only phonemizer data.** The upstream package preloads 494 files
+   for every espeak-ng language (18 MB). The extension only reads `en-us`, so
+   only `phondata`, `phonindex`, `phontab`, `intonations`, `en_dict`,
+   `lang/gmw/en` and `lang/gmw/en-US` are kept (0.8 MB). Phoneme IDs for the
+   test sentences are byte-identical to the full data set.
+2. **int8 quantization of the model.** The text encoder, flow and duration
+   predictor are quantized to int8 with QDQ, per-channel, using 12 phoneme
+   sequences for calibration. The HiFi-GAN vocoder (`/dec/`) stays float32,
+   which keeps the output spectrum within about 1 dB of the fp32 model and
+   avoids the high-frequency noise seen when the vocoder is quantized. Size
+   drops from 61 MB to 23 MB; inference speed is unchanged at about 3.4x real
+   time.
+
+The full-precision model is still available upstream if the quantized voice is
+ever rejected:
+
+```bash
+curl -L -o vendor/piper/en_US-ljspeech-medium.onnx \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx
+```
 
 ## Versions
 
@@ -27,8 +52,10 @@ and the resulting 22.05 kHz PCM is played with Web Audio.
 - Runtime: [onnxruntime-web](https://www.npmjs.com/package/onnxruntime-web)
   1.20.1, WASM backend, single-threaded.
 
-`npm run build:vendor` copies the runtime files from `node_modules`; the model
-is downloaded separately with the curl commands in `scripts/build-vendor.mjs`.
+`npm run build:vendor` copies the runtime files from `node_modules` and
+re-applies the English-only trim. The model is downloaded separately with the
+curl commands in `scripts/build-vendor.mjs`; quantization is documented in
+`scripts/quantize-model.py`.
 
 ## Licensing
 

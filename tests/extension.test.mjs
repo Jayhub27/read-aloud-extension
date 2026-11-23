@@ -729,7 +729,9 @@ test('bundled neural voice speaks when Chromium reports no system voices', async
   ];
   let vendorBytes = 0;
   for (const file of vendorFiles) vendorBytes += (await fs.stat(path.join(ROOT, file))).size;
-  assert.ok(vendorBytes < 120 * 1024 * 1024, `bundled voice must stay under 120MB, got ${vendorBytes}`);
+  assert.ok(vendorBytes < 50 * 1024 * 1024, `bundled voice must stay under 50MB, got ${vendorBytes}`);
+  const modelBytes = (await fs.stat(path.join(ROOT, 'vendor/piper/en_US-ljspeech-medium.onnx'))).size;
+  assert.ok(modelBytes < 30 * 1024 * 1024, `quantized model must stay under 30MB, got ${modelBytes}`);
 
   const result = {
     checkedAt: new Date().toISOString(),

@@ -1,6 +1,6 @@
 {
   "name": "read-aloud-extension",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
   "description": "Manifest V3 Chrome extension that reads selected text or the whole page aloud with system voices, falling back to a bundled Piper neural voice.",
   "type": "module",
